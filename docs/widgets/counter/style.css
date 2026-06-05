@@ -1,0 +1,68 @@
+/* Counter widget styles */
+.counter-widget {
+    padding: 20px;
+    border: 2px solid #e1e4e8;
+    border-radius: 8px;
+    background: #ffffff;
+    max-width: 300px;
+    margin: 10px 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+.counter-widget h3 {
+    margin: 0 0 15px 0;
+    color: #24292e;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.counter-value {
+    font-size: 48px;
+    font-weight: bold;
+    text-align: center;
+    color: #0366d6;
+    margin: 20px 0;
+    transition: all 0.3s ease;
+}
+
+.counter-value.value-changed {
+    transform: scale(1.1);
+    color: #28a745;
+}
+
+.counter-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.counter-buttons button {
+    padding: 10px 20px;
+    font-size: 18px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #0366d6;
+    color: white;
+}
+
+.counter-buttons button:hover {
+    background: #0256c7;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.counter-buttons button:active {
+    transform: translateY(0);
+}
+
+.counter-info {
+    text-align: center;
+    color: #586069;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e1e4e8;
+}

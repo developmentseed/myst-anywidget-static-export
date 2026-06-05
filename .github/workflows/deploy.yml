@@ -1,0 +1,46 @@
+# Deploys the docs/ MyST demo site to GitHub Pages.
+# Ensure GitHub Pages settings for this repo are set to deploy with GitHub Actions.
+
+name: MyST GitHub Pages Deploy
+on:
+  push:
+    branches: [main]
+env:
+  # The site is served from a repo subpath on github.io. Set to '' for a custom domain.
+  BASE_URL: /${{ github.event.repository.name }}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel in-progress production deploys.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v4
+      - name: Install nox
+        run: uv tool install nox
+      - name: Build docs
+        run: nox -s docs
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "./docs/_build/html"
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

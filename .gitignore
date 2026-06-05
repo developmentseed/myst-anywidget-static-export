@@ -1,0 +1,10 @@
+/node_modules/
+/dist/
+/_build/
+docs/_build/
+docs/plugin.mjs
+_widget_assets/
+src/generated/
+__pycache__/
+*.tsbuildinfo
+.DS_Store

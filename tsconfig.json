@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    /* Base options */
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "moduleDetection": "force",
+    "isolatedModules": true,
+
+    /* Strictness */
+    "strict": true,
+    "noImplicitOverride": true,
+
+    /* Module resolution / emit (we bundle with esbuild, tsc is typecheck-only) */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "sourceMap": true,
+
+    /* The transform runs in Node; the runtime (src/runtime) runs in the browser DOM. */
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "scripts"],
+  "exclude": ["node_modules", "dist", "docs"]
+}

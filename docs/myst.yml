@@ -1,0 +1,21 @@
+# See docs at: https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  id: myst-anywidget-static-export-docs
+  title: myst-anywidget-static-export
+  description: >-
+    A MyST plugin that renders anywidget notebook outputs as static,
+    kernel-free interactive widgets.
+  github: https://github.com/developmentseed/myst-anywidget-static-export
+  plugins:
+    - plugin.mjs
+  # Explicit toc: only these pages are built into the site. The provenance
+  # markdown (design-notes.md, upstream/, the archived plan) stays in the repo
+  # for reference but is intentionally left out of the published nav.
+  toc:
+    - file: index.md
+    - file: counter-demo.ipynb
+site:
+  template: book-theme
+  options:
+    folders: true
