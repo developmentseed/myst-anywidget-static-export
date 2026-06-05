@@ -7,6 +7,9 @@ This repository is made with heavy AI-assistance. The idea is to provide a MyST 
 A [MyST](https://mystmd.org) plugin that renders [anywidget](https://anywidget.dev)
 notebook outputs as **static, kernel-free interactive widgets**.
 
+**🔗 [Live demo](https://developmentseed.org/myst-anywidget-static-export/)** — a
+counter widget rendered in static HTML, interactive with no Jupyter kernel.
+
 When MyST builds your site, this plugin reads each executed notebook's embedded
 widget state, writes the widget's ESM/CSS and a small browser host runtime to disk,
 and rewrites the output AST node so the `@myst-theme/anywidget` renderer can mount
@@ -31,7 +34,7 @@ project:
 
 Execute your notebook (so anywidget embeds its widget state into the notebook
 metadata), then build your site as usual. Any cell whose output is an anywidget
-view is rendered statically. See the [live demo](https://developmentseed.github.io/myst-anywidget-static-export/)
+view is rendered statically. See the [live demo](https://developmentseed.org/myst-anywidget-static-export/)
 and [`docs/`](./docs) for a minimal working example.
 
 ## How it works
