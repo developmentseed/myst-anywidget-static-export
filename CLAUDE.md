@@ -67,7 +67,16 @@ npm test            # build + 9 vitest behavior cases (tests/transform.test.ts)
 npm run typecheck   # tsc --noEmit
 nox -s docs-live    # the real MyST demo site, live reload
 nox -s docs         # static HTML → docs/_build/html
+nox -s gen-demos    # regenerate demo notebooks' committed widget state
 ```
+
+Demo notebooks (`docs/*-demo.ipynb`) carry their widget state in
+`metadata.widgets` because the docs build does **not** run a kernel. That state is
+generated from the widget source in `docs/widgets/` by `docs/generate_demos.py`
+(deterministic — random model UUIDs are remapped to stable slugs, so re-running is
+a git no-op when widgets are unchanged). `nox -s docs` / `docs-live` regenerate it
+automatically; run `nox -s gen-demos` after editing a demo widget. Widget dep
+versions are pinned in `noxfile.py` (`WIDGET_DEPS`) for reproducibility.
 
 The behavior tests cover the input→output contract (node rewrite, VBox unwrap,
 buffers, submodels, CSS inlining, no-op, manifest, jslink, idempotency) and

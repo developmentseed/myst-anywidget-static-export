@@ -216,6 +216,33 @@ const FIXTURES = {
     },
   }),
 
+  // Container anywidget with two anywidget children (the container-renderer
+  // contract). The container declares its child-ref traits via
+  // _myst_child_traits; each child carries its own _esm and _css. Both children
+  // must be bundled as renderable submodels (siblings not dropped) so the
+  // runtime's host.renderChild can mount each one.
+  "container-children.ipynb": notebook({
+    cells: [widgetViewCell("container1", "Row([CounterWidget(), CounterWidget()])")],
+    widgetState: {
+      container1: anywidgetEntry({
+        widget_id: "row_container",
+        _anywidget_id: "tests.Row",
+        _myst_child_traits: ["children"],
+        children: ["IPY_MODEL_childA", "IPY_MODEL_childB"],
+      }),
+      childA: anywidgetEntry({
+        value: 1,
+        widget_id: "child_a",
+        _css: ".child-a { color: blue; }\n",
+      }),
+      childB: anywidgetEntry({
+        value: 2,
+        widget_id: "child_b",
+        _css: ".child-b { color: green; }\n",
+      }),
+    },
+  }),
+
   // Counter with CSS — exercises the _css → _myst_css_text path and the
   // deliberate omission of node.css.
   "with-css.ipynb": notebook({

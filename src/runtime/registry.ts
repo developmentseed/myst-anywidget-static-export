@@ -4,9 +4,16 @@
 // (UUID from the kernel). Lookups can use any of these keys.
 
 import { base64ToArrayBuffer, putBuffers } from "./buffers.js";
+import { ensureShadowCss } from "./css.js";
 import { Emitter } from "./emitter.js";
 import { SubModel } from "./submodel.js";
 import { keysForState, normalizeRef, uniqueKeys } from "./refs.js";
+
+function normalizeWidgetModule(mod: any): any {
+  const candidate = mod && mod.default !== undefined ? mod.default : mod;
+  if (typeof candidate === "function") return candidate;
+  return candidate || {};
+}
 
 declare global {
   // eslint-disable-next-line no-var
@@ -30,6 +37,7 @@ export interface Registry {
   getModel(ref: any): Promise<any>;
   waitForModel(ref: any, options?: { timeout?: number }): Promise<any>;
   getWidget(ref: any): Promise<any>;
+  renderChild(ref: any, el: any): Promise<() => void>;
   on(event: string, fn: (detail: any) => void): void;
   off(event: string, fn: Function): void;
   emit(event: string, detail?: any): void;
@@ -41,6 +49,7 @@ function createRegistry(): Registry {
   const _bindings = new Map<string, any>();
   const _links = new Map<string, any>();
   const _boundLinks = new Set<string>();
+  const _childModules = new Map<string, Promise<any>>();
   const _events = new Emitter();
 
   function linkKey(link: any): string {
@@ -162,6 +171,38 @@ function createRegistry(): Registry {
     });
   }
 
+  function importChildModule(esm: string): Promise<any> {
+    let promise = _childModules.get(esm);
+    if (!promise) {
+      const url = URL.createObjectURL(new Blob([esm], { type: "text/javascript" }));
+      promise = import(/* @vite-ignore */ url);
+      _childModules.set(esm, promise);
+    }
+    return promise;
+  }
+
+  // Render a referenced anywidget child into `el` and return its cleanup. This is
+  // the inverse of the top-level render path (renderStaticWidget), but for a
+  // SubModel proxy already registered by setupModel — so we deliberately do NOT
+  // call setupModel here (it is MystAnyModel-specific and would clobber the
+  // proxy's shared widget_manager). The child's _esm/_css already ride along in
+  // _myst_submodels, so this needs no extra emitted assets. Reentrant: a child
+  // that is itself a container can call renderChild for its own grandchildren.
+  async function renderChild(ref: any, el: any): Promise<() => void> {
+    const model = await waitForModel(ref);
+    const esm = model && typeof model.get === "function" ? model.get("_esm") : null;
+    if (!esm) throw new Error("[myst-host] child has no _esm: " + String(ref));
+    const userModule = await importChildModule(esm);
+    let widget = normalizeWidgetModule(userModule);
+    ensureShadowCss(el, model.get("_css"));
+    const nextArgs: any = { model, el, host: host() };
+    if (typeof widget === "function") widget = await widget(nextArgs);
+    if (widget && typeof widget.initialize === "function") await widget.initialize(nextArgs);
+    let cleanup: any;
+    if (widget && typeof widget.render === "function") cleanup = await widget.render(nextArgs);
+    return typeof cleanup === "function" ? cleanup : () => {};
+  }
+
   return {
     register: registerModel,
     get: (key: any) => _byKey.get(normalizeRef(key)),
@@ -184,6 +225,7 @@ function createRegistry(): Registry {
       if (!binding) return Promise.reject(new Error("[myst-host] unknown widget: " + String(ref)));
       return Promise.resolve({ exports: binding.exports, render: binding.render });
     },
+    renderChild,
     on: (event: string, fn: (detail: any) => void) => _events.on(event, fn),
     off: (event: string, fn: Function) => _events.off(event, fn),
     emit: (event: string, detail?: any) => _events.emit(event, detail),
@@ -203,6 +245,7 @@ export interface Host {
   getModel(ref: any): Promise<any>;
   waitForModel(ref: any, options?: { timeout?: number }): Promise<any>;
   getWidget(ref: any): Promise<any>;
+  renderChild(ref: any, el: any): Promise<() => void>;
   on(event: string, fn: (detail: any) => void): void;
   off(event: string, fn: Function): void;
   emit(event: string, detail?: any): void;
@@ -214,6 +257,7 @@ export function host(): Host {
     getModel: (ref: any) => reg.getModel(ref),
     waitForModel: (ref: any, options?: { timeout?: number }) => reg.waitForModel(ref, options),
     getWidget: (ref: any) => reg.getWidget(ref),
+    renderChild: (ref: any, el: any) => reg.renderChild(ref, el),
     on: (event: string, fn: (detail: any) => void) => reg.on(event, fn),
     off: (event: string, fn: Function) => reg.off(event, fn),
     emit: (event: string, detail?: any) => reg.emit(event, detail),
@@ -228,7 +272,42 @@ export function setupModel(model: any): void {
   // These are prototype data properties, so instance assignment shadows them.
   model.save_changes = function () {};
   model.send = function () {};
-  model.off = function () {};
+
+  // model.on must split space-separated names (Backbone/ipywidgets idiom) before
+  // delegating to MystAnyModel's native on, which only matches exact event names.
+  // Native off throws, so we can't delegate removal to it: track our wrappers and
+  // deactivate them in our own off instead.
+  const _on = typeof model.on === "function" ? model.on.bind(model) : null;
+  const _active = new Map<string, Map<Function, { active: boolean }>>();
+  const splitEvents = (event: any) => String(event).split(/\s+/).filter(Boolean);
+  model.on = function (event: any, fn: any) {
+    if (_on && typeof fn === "function") {
+      for (const name of splitEvents(event)) {
+        let perFn = _active.get(name);
+        if (!perFn) {
+          perFn = new Map();
+          _active.set(name, perFn);
+        }
+        const rec = { active: true };
+        perFn.set(fn, rec);
+        _on(name, (detail: any) => {
+          if (rec.active) fn(detail);
+        });
+      }
+    }
+    return model;
+  };
+  model.off = function (event: any, fn: any) {
+    for (const name of splitEvents(event)) {
+      const perFn = _active.get(name);
+      const rec = perFn && perFn.get(fn);
+      if (rec) {
+        rec.active = false;
+        perFn!.delete(fn);
+      }
+    }
+    return model;
+  };
 
   // (2) Hydrate root buffers into the model's top-level state via mutation.
   const rootBuffers =

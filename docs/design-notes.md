@@ -285,6 +285,44 @@ Notes from when we did this:
 - Lonboard exposes its deck instance via `window.__deck` but only at first mount; useless for current state.
 - Walking the React fiber tree finds custom hook state. `Object.keys(el).find(k => k.startsWith('__reactFiber'))` gives the fiber key.
 
+## Cross-widget interop — resolution keys
+
+When one widget looks up another through the host, *which key you use depends on
+whether you're resolving a root widget or a sub-model.* They are keyed
+differently (see `keysForState` in `src/runtime/refs.ts`):
+
+- **Root widgets** (top-level cell outputs) are keyed by `widget_id` (user-set),
+  the model UUID, and `_anywidget_id` (the Python class path, e.g.
+  `lonboard._map.Map`). Their `model_id` field is **unset**.
+- **Sub-models** (e.g. lonboard layers pulled in via `widget_manager.get_model`)
+  carry a `model_id`, and a single id can map to several proxies.
+
+So:
+
+- To resolve a **root** widget, use `host.getModel(ref)` / `host.waitForModel(ref)`
+  with a `widget_id` / UUID / `_anywidget_id`. Do **not** match on `model_id` — it
+  is empty for roots, so the lookup silently finds nothing.
+- Use `registry.filter(m => m.model_id === id)` only to fan out over **sub-model**
+  proxies.
+
+`manywidgets`' `resolveModel` (`packages/core/src/index.ts`) does both and is a
+good worked example.
+
+### Container children (`host.renderChild`)
+
+A container anywidget can render other anywidgets inside its own DOM, kernel-free,
+via `host.renderChild(ref, el): Promise<dispose>`. The child's `_esm`/`_css`
+already ride along in `_myst_submodels` (the transform bundles every
+transitively-referenced anywidget), so no extra assets are emitted: `renderChild`
+resolves the already-registered child `SubModel`, imports its `_esm`, injects its
+CSS into the current shadow root, runs the child's `initialize?`/`render`, and
+returns the child's cleanup. It is reentrant, so nested containers work. By
+convention a container declares its child-ref traits with a synced
+`_myst_child_traits` list and its JS iterates those traits, calling `renderChild`
+per ref. (A future optimization could extract per-child wrapper modules as
+cacheable assets; today child ESM rides inline in the page state, as all
+sub-models do.)
+
 ## Known limitations
 
 - Cross-widget interop now goes through the per-page host (`host.getModel`,

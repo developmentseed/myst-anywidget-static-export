@@ -15,6 +15,7 @@ project:
   toc:
     - file: index.md
     - file: counter-demo.ipynb
+    - file: container-demo.ipynb
 site:
   template: book-theme
   options:

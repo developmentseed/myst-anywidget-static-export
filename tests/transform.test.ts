@@ -104,6 +104,32 @@ describe("anywidget-static-export plugin", () => {
     });
   });
 
+  it("bundles container children as renderable submodels (siblings not dropped)", async () => {
+    await inTmpDir("container-children.ipynb", async ({ notebookPath }) => {
+      const tree = buildAstForNotebook(notebookPath);
+      await transform(tree, { path: notebookPath });
+
+      const widgets = nodesOfType(tree, "anywidget") as any[];
+      expect(widgets).toHaveLength(1);
+      const [node] = widgets;
+      // The container itself is the rewritten root; its child refs are preserved.
+      expect(node.id).toBe("container1");
+      expect(node.model.children).toEqual(["IPY_MODEL_childA", "IPY_MODEL_childB"]);
+
+      // Both children are bundled (neither sibling dropped), each carrying its own
+      // _esm and _css so host.renderChild can mount and style it at runtime.
+      const submodels = node.model._myst_submodels;
+      expect(Object.keys(submodels).sort()).toEqual(["childA", "childB"]);
+      for (const id of ["childA", "childB"]) {
+        expect(typeof submodels[id].state._esm).toBe("string");
+        expect(submodels[id].state._esm.length).toBeGreaterThan(0);
+        expect(typeof submodels[id].state._css).toBe("string");
+      }
+      expect(submodels.childA.state._css).toMatch(/\.child-a/);
+      expect(submodels.childB.state._css).toMatch(/\.child-b/);
+    });
+  });
+
   it("inlines CSS on the model and never sets node.css", async () => {
     await inTmpDir("with-css.ipynb", async ({ dir, notebookPath }) => {
       const tree = buildAstForNotebook(notebookPath);

@@ -10,6 +10,12 @@ function eventDetail(ev: any): any {
   return ev && "detail" in ev ? ev.detail : undefined;
 }
 
+// Backbone/ipywidgets accept space-separated event names ("change:a change:b").
+// Split so each name is registered/unregistered individually.
+function splitEvents(event: string): string[] {
+  return String(event).split(/\s+/).filter(Boolean);
+}
+
 export class Emitter {
   private _target: EventTarget | null;
   private _listeners: Map<string, Map<Function, (ev: any) => void>>;
@@ -26,6 +32,14 @@ export class Emitter {
 
   on(event: string, fn: ((detail: any) => void) | undefined): void {
     if (!fn) return;
+    for (const name of splitEvents(event)) this._onOne(name, fn);
+  }
+
+  off(event: string, fn: Function): void {
+    for (const name of splitEvents(event)) this._offOne(name, fn);
+  }
+
+  private _onOne(event: string, fn: (detail: any) => void): void {
     if (this._target) {
       const listeners = this._listenersFor(event);
       const wrapped = (ev: any) => {
@@ -38,7 +52,7 @@ export class Emitter {
     this._listenersFor(event).set(fn, fn as (ev: any) => void);
   }
 
-  off(event: string, fn: Function): void {
+  private _offOne(event: string, fn: Function): void {
     const listeners = this._listeners.get(event);
     if (!listeners) return;
     const wrapped = listeners.get(fn);
