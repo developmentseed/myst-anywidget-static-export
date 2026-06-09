@@ -30,7 +30,7 @@ export class Emitter {
     return this._listeners.get(event)!;
   }
 
-  on(event: string, fn: ((detail: any) => void) | undefined): void {
+  on(event: string, fn: ((detail: any, extra?: any) => void) | undefined): void {
     if (!fn) return;
     for (const name of splitEvents(event)) this._onOne(name, fn);
   }
@@ -39,11 +39,11 @@ export class Emitter {
     for (const name of splitEvents(event)) this._offOne(name, fn);
   }
 
-  private _onOne(event: string, fn: (detail: any) => void): void {
+  private _onOne(event: string, fn: (detail: any, extra?: any) => void): void {
     if (this._target) {
       const listeners = this._listenersFor(event);
       const wrapped = (ev: any) => {
-        fn(eventDetail(ev));
+        fn(eventDetail(ev), ev && ev.__extra);
       };
       listeners.set(fn, wrapped);
       this._target.addEventListener(event, wrapped as EventListener);
@@ -63,12 +63,14 @@ export class Emitter {
     if (listeners.size === 0) this._listeners.delete(event);
   }
 
-  emit(event: string, detail?: any): void {
+  emit(event: string, detail?: any, extra?: any): void {
     if (this._target) {
       const ev =
         typeof CustomEvent === "function"
           ? new CustomEvent(event, { detail })
           : Object.assign(new Event(event), { detail });
+      // Carry a second positional arg (e.g. comm buffers) alongside detail.
+      if (extra !== undefined) (ev as any).__extra = extra;
       this._target.dispatchEvent(ev);
       return;
     }
@@ -76,7 +78,7 @@ export class Emitter {
     if (!listeners) return;
     for (const fn of Array.from(listeners.values())) {
       try {
-        (fn as (detail: any) => void)(detail);
+        (fn as (detail: any, extra?: any) => void)(detail, extra);
       } catch (e) {
         console.error("[myst-host] listener error", e);
       }

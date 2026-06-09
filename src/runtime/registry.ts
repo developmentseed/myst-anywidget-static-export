@@ -309,6 +309,27 @@ export function setupModel(model: any): void {
     return model;
   };
 
+  // Comm mock: simulate an inbound kernel->frontend custom message by firing the
+  // model's "msg:custom" listeners locally. With no kernel, model.send() is a
+  // no-op (above), so a widget that wants to deliver a custom message (e.g. a
+  // lonboard fly-to) to another model calls this instead. Dispatches LOCALLY
+  // only — there is no kernel and no outbound path.
+  model.receiveCustomMessage = function (content: any, buffers?: any) {
+    const perFn = _active.get("msg:custom");
+    if (!perFn) return;
+    // Snapshot before dispatch: a handler may register/unregister listeners (or,
+    // under fan-out, throw) and must not mutate the set we're iterating or abort
+    // delivery to the rest.
+    for (const [fn, rec] of Array.from(perFn)) {
+      if (!rec.active) continue;
+      try {
+        fn(content, buffers);
+      } catch (e) {
+        console.error("[myst-host] msg:custom listener error", e);
+      }
+    }
+  };
+
   // (2) Hydrate root buffers into the model's top-level state via mutation.
   const rootBuffers =
     (typeof model.get === "function" && model.get("_myst_buffers")) || [];

@@ -30,7 +30,7 @@ export class SubModel {
     this._events.emit("change");
   }
 
-  on(event: string, fn: (detail: any) => void): this {
+  on(event: string, fn: (detail: any, extra?: any) => void): this {
     this._events.on(event, fn);
     return this;
   }
@@ -42,6 +42,13 @@ export class SubModel {
 
   save_changes(): void {}
   send(): void {}
+
+  // Comm mock: fire this proxy's "msg:custom" listeners locally, simulating an
+  // inbound kernel->frontend custom message. See setupModel for the root-model
+  // equivalent. Dispatches locally only — there is no kernel.
+  receiveCustomMessage(content: any, buffers?: any): void {
+    this._events.emit("msg:custom", content, buffers);
+  }
 
   get widget_manager(): any {
     return this.__widget_manager;
