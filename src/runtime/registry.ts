@@ -15,6 +15,60 @@ function normalizeWidgetModule(mod: any): any {
   return candidate || {};
 }
 
+// The shared UUID identity of a model: a SubModel proxy carries `model_id`; a
+// rendered root model carries `_myst_root_id`. Two objects with the same value
+// here are two representations of ONE logical widget.
+function modelUuid(model: any): string | null {
+  if (!model) return null;
+  if (model.model_id) return String(model.model_id);
+  const rootId = typeof model.get === "function" ? model.get("_myst_root_id") : null;
+  return rootId ? String(rootId) : null;
+}
+
+// Wrap `from.set` so a write also lands on `to` (guarded against bounce-back and
+// short-circuited once values agree, so it converges even across >2 objects).
+function installMirrorSet(from: any, to: any, guard: { syncing: boolean }): void {
+  if (!from || typeof from.set !== "function") return;
+  const original = from.set.bind(from);
+  from.set = function (key: any, value: any, options?: any) {
+    const result = original(key, value, options);
+    if (!guard.syncing) {
+      guard.syncing = true;
+      try {
+        if (key && typeof key === "object") {
+          // Backbone-style set({ a, b }) form.
+          for (const k of Object.keys(key)) {
+            if (to.get(k) !== key[k]) to.set(k, key[k]);
+          }
+        } else if (to.get(key) !== value) {
+          to.set(key, value);
+        }
+      } finally {
+        guard.syncing = false;
+      }
+    }
+    return result;
+  };
+}
+
+// Keep two representations of the same logical model in sync. Without a kernel
+// there is no canonical model: the rendered root and any SubModel proxies created
+// for cross-widget references are distinct objects, so a trait write to one is
+// otherwise invisible to readers of the other. Mirroring writes both ways makes
+// resolution order irrelevant — whichever object a consumer resolves, it sees
+// every update. Idempotent per pair.
+function mirrorModels(a: any, b: any): void {
+  if (!a || !b || a === b) return;
+  if (!a.__mystMirrors) a.__mystMirrors = new Set();
+  if (a.__mystMirrors.has(b)) return; // pair already mirrored
+  a.__mystMirrors.add(b);
+  if (!b.__mystMirrors) b.__mystMirrors = new Set();
+  b.__mystMirrors.add(a);
+  const guard = { syncing: false };
+  installMirrorSet(a, b, guard);
+  installMirrorSet(b, a, guard);
+}
+
 declare global {
   // eslint-disable-next-line no-var
   interface Window {
@@ -116,7 +170,19 @@ function createRegistry(): Registry {
   function registerModel(model: any, keys: any[]): void {
     const registeredKeys: string[] = [];
     for (const key of uniqueKeys(keys)) {
-      if (_byKey.has(key)) continue;
+      const existing = _byKey.get(key);
+      if (existing) {
+        // The key is already taken (first registration wins it). If this is the
+        // SAME logical model arriving as a second object — a rendered root and a
+        // referenced SubModel proxy share one UUID — mirror their state so writes
+        // to either are visible through the other. Gated on the UUID identity so
+        // shared keys (_anywidget_id class paths, _layer_type/_control_type
+        // aliases) that legitimately group DISTINCT instances are never mirrored.
+        if (existing !== model && modelUuid(existing) === key && modelUuid(model) === key) {
+          mirrorModels(existing, model);
+        }
+        continue;
+      }
       _byKey.set(key, model);
       registeredKeys.push(key);
     }
