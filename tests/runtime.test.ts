@@ -14,11 +14,11 @@
 // needed: Node provides EventTarget/CustomEvent, and the few `window`/`document`
 // touch-points in registry() are stubbed below.
 
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 
 import { Emitter } from "../src/runtime/emitter.js";
 import { SubModel } from "../src/runtime/submodel.js";
-import { setupModel } from "../src/runtime/registry.js";
+import { registry, setupModel } from "../src/runtime/registry.js";
 
 describe("Emitter: second positional arg (comm buffers)", () => {
   it("delivers both detail and extra to a listener", () => {
@@ -201,5 +201,111 @@ describe("setupModel.receiveCustomMessage (root model path)", () => {
     expect(() => model.receiveCustomMessage({})).not.toThrow();
     expect(reached).toBe(true);
     errSpy.mockRestore();
+  });
+});
+
+describe("registry: same-id model mirroring", () => {
+  // Without a kernel there is no single canonical model: one logical widget can
+  // appear as several objects (a rendered root + SubModel proxies created for
+  // cross-widget references), and `reg.get(id)` returns whichever registered
+  // first — an order that differs between localhost and a CDN. These tests pin
+  // that registering a second object under the same UUID keeps the two in sync,
+  // so a slider drag (a write to one) is visible to a FilterBinder reading the
+  // other, regardless of resolution order.
+  beforeAll(() => {
+    (globalThis as any).window = (globalThis as any).window || {};
+    (globalThis as any).document = (globalThis as any).document || {
+      baseURI: "test://runtime",
+    };
+  });
+  afterAll(() => {
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+  });
+  beforeEach(() => {
+    // Force a fresh registry for each test (registry() caches per baseURI).
+    (globalThis as any).window.__myst_anywidget_hosts = undefined;
+  });
+
+  // Minimal MystAnyModel stand-in: identity via `_myst_root_id`, plus get/set/on.
+  function fakeRootModel(state: Record<string, any> = {}): any {
+    const data: Record<string, any> = { ...state };
+    return {
+      get: (k: string) => data[k],
+      set(k: string, v: any) {
+        data[k] = v;
+      },
+      on() {
+        return this;
+      },
+    };
+  }
+
+  it("mirrors writes both ways between two SubModels sharing a model_id", () => {
+    const reg = registry();
+    const a = new SubModel({ low: 4, high: 10 }, []);
+    a.model_id = "uuid-1";
+    const b = new SubModel({ low: 4, high: 10 }, []);
+    b.model_id = "uuid-1";
+
+    reg.register(a, ["uuid-1"]);
+    reg.register(b, ["uuid-1"]); // collision on the UUID → mirror
+
+    expect(reg.get("uuid-1")).toBe(a); // first registration wins the key
+
+    // A write to the object reg.get() does NOT return must still be visible.
+    b.set("low", 6);
+    expect(a.get("low")).toBe(6);
+
+    // And the reverse direction.
+    a.set("high", 7);
+    expect(b.get("high")).toBe(7);
+  });
+
+  it("mirrors a rendered root model and a referenced SubModel proxy", () => {
+    const reg = registry();
+    const sub = new SubModel({ low: 4, high: 10 }, []);
+    sub.model_id = "uuid-2";
+    const root = fakeRootModel({ _myst_root_id: "uuid-2", low: 4, high: 10 });
+
+    reg.register(sub, ["uuid-2"]); // submodel registers first (the CDN order)
+    reg.register(root, ["uuid-2"]); // root arrives second → mirror
+
+    // The binder would resolve `sub` (it won the key); a drag writes to `root`.
+    root.set("high", 4.5);
+    expect(sub.get("high")).toBe(4.5);
+  });
+
+  it("does NOT mirror distinct instances colliding on a shared alias key", () => {
+    const reg = registry();
+    const a = new SubModel({ value: 1 }, []);
+    a.model_id = "uuid-a";
+    const b = new SubModel({ value: 2 }, []);
+    b.model_id = "uuid-b";
+
+    // Two different layers share a class-path / type alias but are NOT the same
+    // logical model — they must stay independent.
+    const alias = "lonboard._layer.ScatterplotLayer";
+    reg.register(a, [alias]);
+    reg.register(b, [alias]); // collision on alias, but UUIDs differ → no mirror
+
+    a.set("value", 100);
+    expect(b.get("value")).toBe(2);
+  });
+
+  it("converges without looping when both objects are written", () => {
+    const reg = registry();
+    const a = new SubModel({ n: 0 }, []);
+    a.model_id = "uuid-3";
+    const b = new SubModel({ n: 0 }, []);
+    b.model_id = "uuid-3";
+    reg.register(a, ["uuid-3"]);
+    reg.register(b, ["uuid-3"]);
+
+    // A no-op-valued write (value already equal) must not recurse or throw.
+    expect(() => a.set("n", 0)).not.toThrow();
+    a.set("n", 5);
+    expect(b.get("n")).toBe(5);
+    expect(a.get("n")).toBe(5);
   });
 });
