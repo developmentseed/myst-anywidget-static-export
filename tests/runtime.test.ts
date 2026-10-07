@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vites
 
 import { Emitter } from "../src/runtime/emitter.js";
 import { SubModel } from "../src/runtime/submodel.js";
-import { registry, setupModel } from "../src/runtime/registry.js";
+import { registry, registryScope, setupModel } from "../src/runtime/registry.js";
 
 describe("Emitter: second positional arg (comm buffers)", () => {
   it("delivers both detail and extra to a listener", () => {
@@ -307,5 +307,45 @@ describe("registry: same-id model mirroring", () => {
     a.set("n", 5);
     expect(b.get("n")).toBe(5);
     expect(a.get("n")).toBe(5);
+  });
+});
+
+describe("registry scope ignores query string and fragment", () => {
+  beforeAll(() => {
+    (globalThis as any).window = (globalThis as any).window || {};
+    (globalThis as any).document = (globalThis as any).document || {
+      baseURI: "https://example.org/docs/page",
+    };
+  });
+  afterAll(() => {
+    delete (globalThis as any).window;
+    delete (globalThis as any).document;
+  });
+  beforeEach(() => {
+    (globalThis as any).window.__myst_anywidget_hosts = undefined;
+  });
+
+  it("strips ?query and #fragment, keeps origin + path", () => {
+    expect(registryScope("https://example.org/docs/page")).toBe("https://example.org/docs/page");
+    expect(registryScope("https://example.org/docs/page#section-2")).toBe("https://example.org/docs/page");
+    expect(registryScope("https://example.org/docs/page?fullscreen=map_1")).toBe("https://example.org/docs/page");
+    expect(registryScope("https://example.org/docs/page?x=1#y")).toBe("https://example.org/docs/page");
+    expect(registryScope("https://example.org/docs/other")).toBe("https://example.org/docs/other");
+    expect(registryScope(undefined)).toBe("default");
+  });
+
+  it("returns the same registry before and after a hash change on the same page", () => {
+    const doc = (globalThis as any).document;
+    doc.baseURI = "https://example.org/docs/page";
+    const before = registry();
+    // Simulate a MyST TOC anchor click / history.replaceState with a fragment.
+    doc.baseURI = "https://example.org/docs/page#heading";
+    expect(registry()).toBe(before);
+    // ...and a widget writing a query string (e.g. Fullscreen's ?fullscreen=).
+    doc.baseURI = "https://example.org/docs/page?fullscreen=w1";
+    expect(registry()).toBe(before);
+    // A different page still gets its own registry.
+    doc.baseURI = "https://example.org/docs/other";
+    expect(registry()).not.toBe(before);
   });
 });
