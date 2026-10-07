@@ -298,9 +298,21 @@ function createRegistry(): Registry {
   };
 }
 
+// The registry is scoped per page so widgets on different pages of a client-side
+// routed site never see each other. The scope is the document URL *without* its
+// query string and fragment: both change under `history.pushState/replaceState`
+// (MyST TOC anchor clicks, widgets that write `?fullscreen=...`), and keying on
+// the full baseURI made every later `host()` call land in a fresh, empty
+// registry, so `waitForModel`/`renderChild` timed out after the first such change.
+export function registryScope(baseURI: string | undefined | null): string {
+  if (!baseURI) return "default";
+  const cut = baseURI.search(/[?#]/);
+  return cut === -1 ? baseURI : baseURI.slice(0, cut);
+}
+
 export function registry(): Registry {
   if (!window.__myst_anywidget_hosts) window.__myst_anywidget_hosts = new Map();
-  const scope = document && document.baseURI ? document.baseURI : "default";
+  const scope = registryScope(typeof document !== "undefined" ? document.baseURI : undefined);
   if (!window.__myst_anywidget_hosts.has(scope)) {
     window.__myst_anywidget_hosts.set(scope, createRegistry());
   }
